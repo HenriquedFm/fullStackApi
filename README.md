@@ -22,4 +22,4 @@ Passo a Passo para rodar o projeto pelo Terminal do VS CODE:
     └── python cli.py
 
 Para ver as alterações no "databade.db": 
-└── Instalar e estenção "DB Viewer" ou semelhante no VS CODE
+└── Instalar a extensão "DB Viewer" ou semelhante no VS CODE
