@@ -15,7 +15,6 @@ def get_db():
         db.close()
 
 
-# POST - criar endereço (1:1)
 @router.post("/", response_model=AddressOut)
 def criar_endereco(dados: AddressCreate, db: Session = Depends(get_db)):
     usuario = db.query(User).filter(User.id == dados.usuario_id).first()
@@ -33,13 +32,11 @@ def criar_endereco(dados: AddressCreate, db: Session = Depends(get_db)):
     return novo
 
 
-# GET - listar todos os endereços
 @router.get("/", response_model=list[AddressOut])
 def listar_enderecos(db: Session = Depends(get_db)):
     return db.query(Address).all()
 
 
-# GET - buscar por id
 @router.get("/{endereco_id}", response_model=AddressOut)
 def obter_endereco(endereco_id: int, db: Session = Depends(get_db)):
     end = db.query(Address).filter(Address.id == endereco_id).first()
@@ -48,7 +45,6 @@ def obter_endereco(endereco_id: int, db: Session = Depends(get_db)):
     return end
 
 
-# PUT - atualizar endereço (pode trocar usuário vinculado, mantém unicidade)
 @router.put("/{endereco_id}", response_model=AddressOut)
 def atualizar_endereco(endereco_id: int, dados: AddressUpdate, db: Session = Depends(get_db)):
     end = db.query(Address).filter(Address.id == endereco_id).first()
@@ -73,7 +69,6 @@ def atualizar_endereco(endereco_id: int, dados: AddressUpdate, db: Session = Dep
     return end
 
 
-# DELETE - remover endereço
 @router.delete("/{endereco_id}")
 def deletar_endereco(endereco_id: int, db: Session = Depends(get_db)):
     end = db.query(Address).filter(Address.id == endereco_id).first()
