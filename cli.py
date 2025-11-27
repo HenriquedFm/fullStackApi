@@ -21,7 +21,6 @@ def criar_usuario_terminal():
         print("Erro: Nome obrigatorio.")
         return
 
-    # --- CPF ---
     cpf_input = input("CPF: ").strip()
     cpf_limpo = limpar_cpf(cpf_input)
     
@@ -30,15 +29,16 @@ def criar_usuario_terminal():
         return
 
     db = SessionLocal()
-    usuario_existe = db.query(User).filter(User.cpf == cpf_limpo).first()
-    db.close()
-
-    if usuario_existe:
-        print(f"ERRO FATAL: O CPF {cpf_limpo} ja existe no banco. Cadastro cancelado.")
-        return 
+    try:
+        usuario_existe = db.query(User).filter(User.cpf == cpf_limpo).first()
+        if usuario_existe:
+            print(f"ERRO FATAL: O CPF {cpf_limpo} ja existe no banco. Cadastro cancelado.")
+            return 
+    finally:
+        db.close()
 
     try:
-        UserCreate(nome=nome, cpf=cpf_limpo, email="a@a.com", password="123")
+        UserCreate(nome=nome, cpf=cpf_limpo, email="temp@temp.com", password="123")
     except ValidationError as e:
         erros = [err['msg'] for err in e.errors() if 'cpf' in str(err['loc'])]
         if erros:
@@ -55,27 +55,37 @@ def criar_usuario_terminal():
     cep = input("CEP: ").strip()
     cep_limpo = cep.replace("-", "").replace(".", "")
     
-    if len(cep_limpo) != 8:
-        print("Erro no CEP: Tamanho invalido.")
+    if len(cep_limpo) != 8 or not cep_limpo.isdigit():
+        print("Erro no CEP: Tamanho invalido ou caracteres nao numericos.")
         return
+
+    rua = ""
+    bairro = ""
+
     try:
         req = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/", timeout=5)
         dados = req.json()
         if "erro" in dados:
             print("ERRO FATAL: CEP nao encontrado na base dos Correios.")
             return
-    except:
+        
+        rua = dados.get("logradouro", "")
+        bairro = dados.get("bairro", "")
+        print(f"   > Endereco localizado Automaticamente: {rua} - {bairro}")
+
+        if not rua:
+            rua = input("   > Aviso: Rua nao retornada pela API (CEP Geral). Digite a Rua: ").strip()
+        if not bairro:
+            bairro = input("   > Aviso: Bairro nao retornado pela API. Digite o Bairro: ").strip()
+
+    except Exception:
         print("Erro: Falha ao consultar ViaCEP.")
         return
 
-    rua = input("Rua: ").strip()
-    if not rua:
-        print("Erro: Rua obrigatoria.")
-        return
-
-    bairro = input("Bairro: ").strip()
-    if not bairro:
-        print("Erro: Bairro obrigatorio.")
+    try:
+        AddressCreate(cep=cep, rua=rua, bairro=bairro, usuario_id=0)
+    except ValidationError as e:
+        print(f"Erro na validacao do endereco: {e.errors()[0]['msg']}")
         return
 
     db = SessionLocal()
@@ -99,18 +109,25 @@ def listar_usuarios_terminal():
     users = db.query(User).all()
     print(f"\n--- Lista ({len(users)}) ---")
     for u in users:
-        print(f"ID: {u.id} | Nome: {u.nome} | CPF: {u.cpf} | Endereco: {u.endereco.rua if u.endereco else 'Sem endereco'}")
+        print(f"ID: {u.id} | Nome: {u.nome} | CPF: {u.cpf}")
+        if u.endereco:
+             print(f"   Endereco: {u.endereco.rua}, {u.endereco.bairro} - CEP: {u.endereco.cep}")
+        else:
+             print("   Endereco: Nao cadastrado")
     db.close()
 
 def buscar_por_id_terminal():
     try:
         id_busca = int(input("ID: "))
     except:
+        print("ID invalido.")
         return
     db = SessionLocal()
     u = db.query(User).filter(User.id == id_busca).first()
     if u:
-        print(f"Achou: {u.nome}, CPF: {u.cpf}, Rua: {u.endereco.rua if u.endereco else ''}")
+        print(f"Achou: {u.nome}, CPF: {u.cpf}")
+        if u.endereco:
+            print(f"Endereco: {u.endereco.rua}, {u.endereco.bairro} - CEP: {u.endereco.cep}")
     else:
         print("Nao encontrado.")
     db.close()
@@ -119,63 +136,92 @@ def atualizar_usuario_terminal():
     try:
         id_busca = int(input("ID para atualizar: "))
     except:
+        print("ID invalido.")
         return
     
     db = SessionLocal()
-    u = db.query(User).filter(User.id == id_busca).first()
-    if not u:
-        print("Nao encontrado.")
-        db.close()
-        return
-    
-    novo_nome = input(f"Nome ({u.nome}): ") or u.nome
-    novo_cpf = input(f"CPF ({u.cpf}): ") or u.cpf
-    novo_email = input(f"Email ({u.email}): ") or u.email
-    
-    # Atualiza user
-    u.nome = novo_nome
-    u.cpf = limpar_cpf(novo_cpf)
-    u.email = novo_email
-    
-    if u.endereco:
-        novo_cep = input(f"CEP ({u.endereco.cep}): ") or u.endereco.cep
+    try:
+        u = db.query(User).filter(User.id == id_busca).first()
+        if not u:
+            print("Nao encontrado.")
+            return
         
-        # Se mudou CEP, valida
-        if novo_cep != u.endereco.cep:
-            clean_cep = novo_cep.replace("-", "").replace(".", "")
-            r = requests.get(f"https://viacep.com.br/ws/{clean_cep}/json/")
-            if "erro" in r.json():
-                print("Erro: Novo CEP invalido.")
-                db.close()
-                return
+        novo_nome = input(f"Nome ({u.nome}): ") or u.nome
+        novo_cpf = input(f"CPF ({u.cpf}): ") or u.cpf
+        novo_email = input(f"Email ({u.email}): ") or u.email
         
-        nova_rua = input(f"Rua ({u.endereco.rua}): ") or u.endereco.rua
-        novo_bairro = input(f"Bairro ({u.endereco.bairro}): ") or u.endereco.bairro
-        
-        u.endereco.cep = novo_cep
-        u.endereco.rua = nova_rua
-        u.endereco.bairro = novo_bairro
+        try:
+            cpf_limpo = limpar_cpf(novo_cpf)
+            UserCreate(nome=novo_nome, cpf=cpf_limpo, email=novo_email, password="123")
+        except ValidationError as e:
+            print(f"Erro na validacao dos dados: {e.errors()[0]['msg']}")
+            return
 
-    db.commit()
-    print("Atualizado.")
-    db.close()
+        u.nome = novo_nome
+        u.cpf = cpf_limpo
+        u.email = novo_email
+        
+        if u.endereco:
+            novo_cep = input(f"CEP ({u.endereco.cep}): ") or u.endereco.cep
+            
+            nova_rua = u.endereco.rua
+            novo_bairro = u.endereco.bairro
+
+            if novo_cep != u.endereco.cep:
+                clean_cep = novo_cep.replace("-", "").replace(".", "")
+                if len(clean_cep) != 8 or not clean_cep.isdigit():
+                    print("Erro: Novo CEP invalido.")
+                    return
+                try:
+                    r = requests.get(f"https://viacep.com.br/ws/{clean_cep}/json/", timeout=5)
+                    dados = r.json()
+                    if "erro" in dados:
+                        print("Erro: Novo CEP nao encontrado na base.")
+                        return
+                    
+                    nova_rua = dados.get("logradouro", "")
+                    novo_bairro = dados.get("bairro", "")
+                    print(f"   > Novo endereco detectado Automaticamente: {nova_rua} - {novo_bairro}")
+                    
+                    if not nova_rua:
+                         nova_rua = input("   > Digite a Rua (CEP Geral): ")
+                    if not novo_bairro:
+                         novo_bairro = input("   > Digite o Bairro: ")
+
+                except:
+                    print("Erro ao validar novo CEP.")
+                    return
+            
+            u.endereco.cep = novo_cep
+            u.endereco.rua = nova_rua
+            u.endereco.bairro = novo_bairro
+
+        db.commit()
+        print("Atualizado.")
+    except Exception as e:
+        print(f"Erro ao atualizar: {e}")
+    finally:
+        db.close()
 
 def remover_usuario_terminal():
     try:
         id_busca = int(input("ID para remover: "))
     except:
+        print("ID invalido.")
         return
     db = SessionLocal()
-    u = db.query(User).filter(User.id == id_busca).first()
-    if u:
-        if u.endereco:
-            db.delete(u.endereco)
-        db.delete(u)
-        db.commit()
-        print("Removido.")
-    else:
-        print("Nao encontrado.")
-    db.close()
+    try:
+        u = db.query(User).filter(User.id == id_busca).first()
+        if u:
+            if u.endereco:
+                db.delete(u.endereco)
+            db.delete(u)
+            db.commit()
+            print("Removido.")
+        else:
+            print("Nao encontrado.")
+    finally:
+        db.close()
 
 def menu():
     while True:

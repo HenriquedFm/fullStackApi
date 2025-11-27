@@ -25,6 +25,8 @@ def criar_endereco(dados: AddressCreate, db: Session = Depends(get_db)):
     if usuario.endereco:
         raise HTTPException(status_code=400, detail="Usuário já possui endereço cadastrado")
 
+    #o usuario tem que digitar apenas o cep, fazer uma integracao com o viacep para compos as informacoes de rua e
+
     novo = Address(cep=dados.cep, rua=dados.rua, bairro=dados.bairro, usuario_id=dados.usuario_id)
     db.add(novo)
     db.commit()
